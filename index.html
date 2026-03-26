@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HPAP-LOG PRO | Hải Phòng Agri</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --hp-green: #1b5e20; --hp-accent: #f9a825; --blue: #0277bd; --bg: #f1f3f4; --red: #d32f2f; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: var(--bg); padding-bottom: 80px; }
+        header { background: var(--hp-green); color: white; padding: 15px; text-align: center; font-weight: bold; sticky; top: 0; z-index: 100; }
+        .card { background: white; margin: 10px; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        
+        /* Giao diện chung */
+        .title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .printer-btn { font-size: 26px; cursor: pointer; color: #ccc; border: none; background: none; transition: 0.3s; }
+        .printer-on { color: #4caf50; text-shadow: 0 0 10px rgba(76,175,80,0.5); }
+
+        /* TAB 1: NHẬT KÝ */
+        .task-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+        .task-item { border: 1px solid #ddd; padding: 10px 5px; border-radius: 8px; text-align: center; font-size: 0.75rem; background: #fff; cursor: pointer; }
+        .task-item.active { border: 2px solid var(--hp-green); background: #e8f5e9; font-weight: bold; color: var(--hp-green); }
+        .note-area { position: relative; }
+        .btn-mic-inline { position: absolute; right: 10px; bottom: 25px; border: none; background: none; font-size: 22px; color: var(--blue); cursor: pointer; }
+
+        /* TAB 2: TEM TRUY XUẤT (HÀNG NGANG TỐI GIẢN) */
+        .inline-input-row { 
+            display: flex; 
+            align-items: center; 
+            gap: 5px; 
+            background: #fff; 
+            padding: 5px; 
+            border: 1px solid #ddd; 
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        .btn-mic-main { background: var(--hp-accent); color: white; border: none; width: 45px; height: 45px; border-radius: 8px; font-size: 20px; flex-shrink: 0; }
+        .input-qty { width: 80px; border: none; padding: 10px; font-size: 1rem; outline: none; border-right: 1px solid #eee; }
+        .input-unit { flex-grow: 1; border: none; padding: 10px; font-size: 1rem; outline: none; }
+
+        /* Nút thao tác chính */
+        .btn-action { background: var(--hp-green); color: white; border: none; width: 100%; padding: 15px; border-radius: 10px; font-weight: bold; font-size: 1rem; cursor: pointer; }
+        
+        /* Bảng danh sách chờ in */
+        .queue-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
+        .queue-table td { border-bottom: 1px solid #f0f0f0; padding: 12px 5px; }
+        .badge-qty { background: #e8f5e9; color: var(--hp-green); padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+        .log-note-box { font-size: 0.8rem; color: #666; background: #f9f9f9; padding: 8px; border-radius: 6px; margin-top: 5px; font-style: italic; border: 1px solid #eee; }
+
+        /* Điều hướng */
+        nav { position: fixed; bottom: 0; width: 100%; background: white; display: flex; height: 65px; border-top: 1px solid #ddd; z-index: 1000; }
+        .nav-tab { flex: 1; border: none; background: none; font-size: 11px; color: #666; cursor: pointer; }
+        .nav-tab.active { color: var(--hp-green); font-weight: bold; border-top: 3px solid var(--hp-green); }
+
+        select, textarea { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc; margin-bottom: 10px; box-sizing: border-box; font-size: 1rem; }
+    </style>
+</head>
+<body>
+
+<header>HPAP-LOG: QUẢN TRỊ NÔNG NGHIỆP SỐ</header>
+
+<div id="view-log" class="tab-content">
+    <div class="card">
+        <h3>📔 Ghi nhật ký sản xuất</h3>
+        <select id="log-crop">
+            <option>Táo Bàng La</option><option>Gạo Ruộng Rươi</option><option>Na Thủy Nguyên</option><option>Vải Bát Trang</option>
+        </select>
+        <div class="task-grid">
+            <div class="task-item" onclick="setTask(this,'Làm đất')">🚜 Làm đất</div>
+            <div class="task-item" onclick="setTask(this,'Bón phân')">🧪 Bón phân</div>
+            <div class="task-item" onclick="setTask(this,'Thu hoạch')">🧺 Thu hoạch</div>
+        </div>
+        <div class="note-area">
+            <textarea id="log-note" placeholder="Chi tiết công việc..."></textarea>
+            <button class="btn-mic-inline" onclick="voiceInput('log-note')">🎤</button>
+        </div>
+        <button class="btn-action" onclick="saveLog()">LƯU NHẬT KÝ</button>
+
+        <div style="margin-top:20px; border-bottom:2px solid #eee; padding-bottom:5px; display:flex; justify-content:space-between;">
+            <b>📋 Lịch sử công việc</b>
+            <select id="filter-log" onchange="renderLogs()" style="width:100px; padding:2px; font-size:0.75rem; margin:0">
+                <option value="Tất cả">Tất cả</option><option>Táo Bàng La</option>
+            </select>
+        </div>
+        <div id="log-list"></div>
+    </div>
+</div>
+
+<div id="view-qr" class="tab-content" style="display:none;">
+    <div class="card">
+        <div class="title-row">
+            <h3 style="margin:0">🏷️ Tem Truy Xuất</h3>
+            <button id="printer-btn" class="printer-btn" onclick="connectPrinter()">🖨️</button>
+        </div>
+        
+        <label style="font-size:0.8rem">Chọn nông sản kích hoạt:</label>
+        <select id="qr-crop">
+            <option>Táo Bàng La</option><option>Gạo Ruộng Rươi</option><option>Na Thủy Nguyên</option><option>Vải Bát Trang</option>
+        </select>
+
+        <div class="inline-input-row">
+            <button class="btn-mic-main" id="mic-tag" onclick="voiceInputTag()">🎤</button>
+            <input type="number" id="tag-qty" class="input-qty" placeholder="Số lượng">
+            <input type="text" id="tag-unit" class="input-unit" placeholder="Đơn vị (Túi, Hộp...)">
+        </div>
+
+        <button class="btn-action" style="background:var(--hp-accent)" onclick="activateTag()">KÍCH HOẠT TEM</button>
+
+        <div style="margin-top:20px; border-top:2px solid #eee; padding-top:15px;">
+            <div class="title-row">
+                <b>Danh sách chờ in</b>
+                <select id="filter-queue" onchange="renderQueue()" style="width:100px; padding:2px; font-size:0.75rem; margin:0">
+                    <option value="Tất cả">Tất cả</option><option>Táo Bàng La</option>
+                </select>
+            </div>
+            <table class="queue-table">
+                <tbody id="queue-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="view-report" class="tab-content" style="display:none;">
+    <div class="card">
+        <h3>📊 Sản lượng thực tế</h3>
+        <div style="height:250px;"><canvas id="yieldChart"></canvas></div>
+        <button class="btn-action" style="background:var(--blue); margin-top:20px" onclick="exportExcel()">📥 XUẤT BÁO CÁO EXCEL</button>
+    </div>
+</div>
+
+<nav>
+    <button class="nav-tab active" onclick="switchTab('view-log', this)">📔 Nhật ký</button>
+    <button class="nav-tab" onclick="switchTab('view-qr', this)">🏷️ Tem Truy Xuất</button>
+    <button class="nav-tab" onclick="switchTab('view-report', this)">📈 Báo cáo</button>
+</nav>
+
+<script>
+    let logs = JSON.parse(localStorage.getItem('hp_logs_v9')) || [];
+    let tags = JSON.parse(localStorage.getItem('hp_tags_v9')) || [];
+    let currentTask = "";
+    let isConnected = false;
+
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'vi-VN';
+
+    // 1. NHẬT KÝ
+    function voiceInput(id) {
+        recognition.start();
+        recognition.onresult = (e) => { document.getElementById(id).value += e.results[0][0].transcript + " "; };
+    }
+
+    function setTask(el, task) {
+        document.querySelectorAll('.task-item').forEach(i => i.classList.remove('active'));
+        el.classList.add('active'); currentTask = task;
+    }
+
+    function saveLog() {
+        const crop = document.getElementById('log-crop').value;
+        const note = document.getElementById('log-note').value;
+        if(!currentTask) return alert("Chọn công việc!");
+        logs.unshift({ id: Date.now(), date: new Date().toLocaleString('vi-VN'), crop, task: currentTask, note });
+        localStorage.setItem('hp_logs_v9', JSON.stringify(logs));
+        renderLogs(); document.getElementById('log-note').value = ""; alert("Đã lưu!");
+    }
+
+    function renderLogs() {
+        const f = document.getElementById('filter-log').value;
+        const data = f === "Tất cả" ? logs : logs.filter(l => l.crop === f);
+        document.getElementById('log-list').innerHTML = data.map(l => `
+            <div class="log-item card" style="margin:8px 0; border-left:5px solid var(--hp-green)">
+                <small>${l.date}</small><br><b>${l.crop}</b>: ${l.task}
+                ${l.note ? `<div class="log-note-box">📝 ${l.note}</div>` : ''}
+            </div>
+        `).join('');
+    }
+
+    // 2. TEM TRUY XUẤT (GIỌNG NÓI & NHẬP LIỆU)
+    function voiceInputTag() {
+        recognition.start();
+        document.getElementById('mic-tag').innerText = "...";
+        recognition.onresult = (e) => {
+            document.getElementById('mic-tag').innerText = "🎤";
+            const text = e.results[0][0].transcript.toLowerCase();
+            const num = text.match(/\d+/);
+            const unit = text.replace(/\d+/, '').trim();
+            if(num) {
+                document.getElementById('tag-qty').value = num[0];
+                document.getElementById('tag-unit').value = unit || "đơn vị";
+            }
+        };
+    }
+
+    function activateTag() {
+        const crop = document.getElementById('qr-crop').value;
+        const qty = document.getElementById('tag-qty').value;
+        const unit = document.getElementById('tag-unit').value || "đơn vị";
+        if(!qty) return alert("Nhập số lượng!");
+        tags.unshift({ id: Date.now(), crop, qty, unit, time: new Date().toLocaleTimeString('vi-VN') });
+        localStorage.setItem('hp_tags_v9', JSON.stringify(tags));
+        renderQueue(); document.getElementById('tag-qty').value = ""; document.getElementById('tag-unit').value = "";
+    }
+
+    function renderQueue() {
+        const f = document.getElementById('filter-queue').value;
+        const data = f === "Tất cả" ? tags : tags.filter(t => t.crop === f);
+        document.getElementById('queue-body').innerHTML = data.map(t => `
+            <tr>
+                <td><b>${t.crop}</b><br><small>${t.time}</small></td>
+                <td><span class="badge-qty">${t.qty}</span> ${t.unit}</td>
+                <td style="text-align:right">
+                    <button onclick="printTag(${t.id})" style="color:var(--hp-green); border:none; background:none; font-weight:bold; padding:10px;">IN</button>
+                    <button onclick="delTag(${t.id})" style="color:var(--red); border:none; background:none; padding:10px;">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function delTag(id) { if(confirm("Xóa lô tem?")) { tags = tags.filter(t => t.id !== id); localStorage.setItem('hp_tags_v9', JSON.stringify(tags)); renderQueue(); } }
+
+    function printTag(id) { if(!isConnected) return alert("Kết nối máy in 🖨️!"); alert("Đang in..."); }
+
+    async function connectPrinter() {
+        try { await navigator.bluetooth.requestDevice({ acceptAllDevices: true }); isConnected = true; document.getElementById('printer-btn').classList.add('printer-on'); alert("Đã kết nối!"); } catch(e){}
+    }
+
+    // 3. ĐIỀU HƯỚNG & BÁO CÁO
+    function switchTab(id, btn) {
+        document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+        document.querySelectorAll('.nav-tab').forEach(n => n.classList.remove('active'));
+        document.getElementById(id).style.display = 'block'; btn.classList.add('active');
+        if(id === 'view-report') initChart();
+    }
+
+    function initChart() {
+        const ctx = document.getElementById('yieldChart').getContext('2d');
+        if(window.hChart) window.hChart.destroy();
+        window.hChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Táo Bàng La', 'Gạo Rươi', 'Na Thủy Nguyên', 'Vải Bát Trang'],
+                datasets: [{ label: 'Lô tem đã kích hoạt', data: [45, 80, 20, 55], backgroundColor: '#1b5e20' }]
+            },
+            options: { maintainAspectRatio: false }
+        });
+    }
+
+    function exportExcel() {
+        const ws = XLSX.utils.json_to_sheet(logs);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "HPAP_Data");
+        XLSX.writeFile(wb, "Bao_Cao_Nong_Nghiep_HP.xlsx");
+    }
+
+    window.onload = () => { renderLogs(); renderQueue(); };
+</script>
+</body>
+</html>
